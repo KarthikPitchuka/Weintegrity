@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Example component */
+.btn-primary {
+  @apply inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-white shadow hover:bg-brand-700 transition;
+}
