@@ -485,12 +485,12 @@ const Layout = () => {
                                     ) : (
                                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center ring-2 ring-white">
                                             <span className="text-white font-bold text-sm">
-                                                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                                                {user?.firstName ? (user.firstName.charAt(0) + (user.lastName?.charAt(0) || '')).toUpperCase() : (user?.name?.charAt(0) || 'U').toUpperCase()}
                                             </span>
                                         </div>
                                     )}
                                     <div className="hidden md:block text-left pr-1">
-                                        <p className="text-sm font-semibold text-slate-800 leading-none">{user?.name?.split(' ')[0]}</p>
+                                        <p className="text-sm font-semibold text-slate-800 leading-none">{(user?.name || user?.firstName || 'User').split(' ')[0]}</p>
                                         <p className="text-[10px] uppercase tracking-wider font-medium text-slate-500 mt-0.5">{user?.role}</p>
                                     </div>
                                     <FiChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 hidden md:block ${profileDropdownOpen ? 'rotate-180' : ''}`} />
@@ -510,7 +510,7 @@ const Layout = () => {
                                                 ) : (
                                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center ring-2 ring-white shadow-sm">
                                                         <span className="text-white font-bold">
-                                                            {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                                                            {user?.firstName ? (user.firstName.charAt(0) + (user.lastName?.charAt(0) || '')).toUpperCase() : (user?.name?.charAt(0) || 'U').toUpperCase()}
                                                         </span>
                                                     </div>
                                                 )}

@@ -58,6 +58,7 @@ export const register = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
+                name: user.firstName + ' ' + (user.lastName || ''),
                 role: user.role,
                 isEmailVerified: user.isEmailVerified,
                 profilePicture: user.profilePicture
@@ -115,6 +116,7 @@ export const verifyEmail = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
+                name: user.firstName + ' ' + (user.lastName || ''),
                 role: user.role,
                 isEmailVerified: true,
                 profilePicture: user.profilePicture
@@ -312,6 +314,7 @@ export const login = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
+                name: user.firstName + ' ' + (user.lastName || ''),
                 role: user.role,
                 isEmailVerified: user.isEmailVerified,
                 profilePicture: user.profilePicture
@@ -483,6 +486,7 @@ export const updateProfile = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
+                name: user.firstName + ' ' + (user.lastName || ''),
                 role: user.role,
                 profilePicture: user.profilePicture
             }
@@ -620,6 +624,7 @@ export const resetPassword = async (req, res) => {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
+                name: user.firstName + ' ' + (user.lastName || ''),
                 role: user.role,
                 profilePicture: user.profilePicture
             },
