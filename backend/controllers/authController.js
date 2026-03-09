@@ -171,7 +171,15 @@ export const resendVerification = async (req, res) => {
 // @access  Public
 export const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
+
+        if (email && typeof email === 'object' && email.email) {
+            email = email.email;
+        }
+
+        if (typeof email !== 'string') {
+            return res.status(400).json({ message: 'Invalid email format' });
+        }
 
         // Find user
         const user = await User.findOne({ email: email.toLowerCase() });

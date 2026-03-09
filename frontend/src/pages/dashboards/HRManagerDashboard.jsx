@@ -42,8 +42,6 @@ const HRManagerDashboard = ({ user }) => {
         payrollProcessed: 0
     });
     const [loading, setLoading] = useState(true);
-    const [statsData, setStatsData] = useState(null);
-    const [chartData, setChartData] = useState([]);
     const [recentActivities, setRecentActivities] = useState([]);
     const [notificationBannerDismissed, setNotificationBannerDismissed] = useState(false);
 
@@ -118,9 +116,6 @@ const HRManagerDashboard = ({ user }) => {
             });
 
             setRecentActivities(activities);
-
-            // Fetch Organization Stats for Charts
-            fetchOrgStats();
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -128,24 +123,7 @@ const HRManagerDashboard = ({ user }) => {
         }
     };
 
-    const fetchOrgStats = async () => {
-        try {
-            const response = await api.get('/employees/stats');
-            setStatsData(response.data);
 
-            // Format department data for charts
-            if (response.data?.byDepartment) {
-                const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-                setChartData(response.data.byDepartment.map((dept, index) => ({
-                    name: dept._id || 'Unassigned',
-                    count: dept.count,
-                    color: colors[index % colors.length]
-                })));
-            }
-        } catch (error) {
-            console.error('Error fetching org stats:', error);
-        }
-    };
 
     const dashboardStats = [
         {
@@ -267,114 +245,7 @@ const HRManagerDashboard = ({ user }) => {
                 </button>
             </div>
 
-            {/* Organization Insights Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            <HiOutlineTrendingUp className="w-5 h-5 text-primary-500" />
-                            Workforce by Department
-                        </h2>
-                    </div>
-                    <div className="h-72">
-                        {loading ? (
-                            <div className="h-full flex items-center justify-center">
-                                <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                            </div>
-                        ) : chartData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis
-                                        dataKey="name"
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fontSize: 11, fill: '#64748b' }}
-                                    />
-                                    <YAxis
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fontSize: 11, fill: '#64748b' }}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: '#f8fafc' }}
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Bar
-                                        dataKey="count"
-                                        radius={[4, 4, 0, 0]}
-                                        barSize={32}
-                                    >
-                                        {chartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400">
-                                <p>No organizational data available yet</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
 
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            <HiOutlineChartPie className="w-5 h-5 text-green-500" />
-                            Department Distribution
-                        </h2>
-                    </div>
-                    <div className="h-72">
-                        {loading ? (
-                            <div className="h-full flex items-center justify-center">
-                                <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                            </div>
-                        ) : chartData.length > 0 ? (
-                            <div className="flex flex-col md:flex-row h-full items-center">
-                                <div className="flex-1 h-full w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={chartData}
-                                                innerRadius={60}
-                                                outerRadius={80}
-                                                paddingAngle={5}
-                                                dataKey="count"
-                                            >
-                                                {chartData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip
-                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                            />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <div className="w-full md:w-48 overflow-y-auto max-h-full py-2">
-                                    <div className="space-y-3 px-2">
-                                        {chartData.map((dept, index) => (
-                                            <div key={index} className="flex items-center justify-between text-xs">
-                                                <div className="flex items-center gap-2 truncate">
-                                                    <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: dept.color }}></div>
-                                                    <span className="text-slate-600 truncate">{dept.name}</span>
-                                                </div>
-                                                <span className="font-bold text-slate-800">{dept.count}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400">
-                                <p>No distributional data available yet</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

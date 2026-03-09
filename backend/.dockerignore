@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+Dockerfile
+docker-compose*
+logs
+uploads/*
+!uploads/.gitkeep
+mongo_backup
+debug_*.js
+simulate_*.js
+check_*.js
+trigger_*.js

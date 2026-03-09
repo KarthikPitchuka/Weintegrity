@@ -171,8 +171,8 @@ const EmployeeList = () => {
             {/* Filters */}
             <div className="card p-4">
                 <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
-                        <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                    <div className="flex-1 relative group">
+                        <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                         <input
                             type="text"
                             placeholder="Search employees..."
@@ -182,8 +182,8 @@ const EmployeeList = () => {
                         />
                     </div>
                     <div className="flex gap-4">
-                        <div className="relative">
-                            <HiOutlineFilter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                        <div className="relative group">
+                            <HiOutlineFilter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                             <select
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}

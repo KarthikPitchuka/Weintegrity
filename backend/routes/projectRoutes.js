@@ -9,7 +9,11 @@ import {
     submitProjectUpdate,
     getProjectUpdates,
     reviewProjectUpdate,
-    deleteProject
+    updateProjectProgress,
+    toggleMilestone,
+    deleteProject,
+    addProjectRisk,
+    resolveProjectRisk
 } from '../controllers/projectController.js';
 
 const router = express.Router();
@@ -31,5 +35,11 @@ router.post('/:id/response', submitResponse);
 router.post('/:id/updates', submitProjectUpdate);
 router.get('/:id/updates', getProjectUpdates);
 router.patch('/:id/updates/:updateId/review', reviewProjectUpdate);
+router.patch('/:id/progress', updateProjectProgress);
+router.patch('/:id/milestones/:milestoneId/toggle', toggleMilestone);
+
+// Risk routes
+router.post('/:id/risks', addProjectRisk);
+router.patch('/:id/risks/:riskId/resolve', resolveProjectRisk);
 
 export default router;

@@ -1,8 +1,11 @@
+import mongoose from 'mongoose';
 import Attendance from '../models/Attendance.js';
 import Employee from '../models/Employee.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import Holiday from '../models/Holiday.js';
+import Leave from '../models/Leave.js';
+import Shift from '../models/Shift.js';
 import { logCheckIn, logCheckOut } from '../utils/auditLogger.js';
 
 // @desc    Get attendance records
@@ -63,15 +66,18 @@ export const getAttendanceRecords = async (req, res) => {
 
         // For HR viewing "All Employees", filter to only show Employee role users' attendance
         // This excludes attendance from HR staff, managers, and other non-employee roles
-        let employeeOnlyUserIds = null;
+        let employeeUsers = [];
         if (employeesOnly === 'true' && !employeeId) {
-            // Get all users with 'Employee' role
-            const employeeUsers = await User.find({ role: 'Employee', isActive: true }).select('_id employeeId');
+            // Get all users with 'Employee' role who have a linked Employee record
+            // This ensures we only show regular employees and exclude HR/Admin staff 
+            // who might have an account but aren't part of the regular tracking list
+            employeeUsers = await User.find({ 
+                role: 'Employee', 
+                isActive: true,
+                employeeId: { $exists: true, $ne: null }
+            }).select('_id employeeId');
             const userIds = employeeUsers.map(u => u._id);
             const linkedEmployeeIds = employeeUsers.filter(u => u.employeeId).map(u => u.employeeId);
-
-            // Combine all IDs to filter by
-            employeeOnlyUserIds = [...userIds.map(id => id.toString()), ...linkedEmployeeIds.map(id => id.toString())];
 
             // Add filter to only include attendance from these users
             if (!query.$or) {
@@ -79,6 +85,28 @@ export const getAttendanceRecords = async (req, res) => {
                     { userId: { $in: userIds } },
                     { employeeId: { $in: [...userIds, ...linkedEmployeeIds] } }
                 ];
+            }
+        }
+
+        // Trigger absence sync in background for the requested range to ensure data is up to date
+        // Only do this if it's for current or past dates
+        const syncStartDate = startDate ? new Date(startDate) : (month && year ? new Date(year, month - 1, 1) : null);
+        const syncEndDate = endDate ? new Date(endDate) : (month && year ? new Date(year, month, 0) : null);
+
+        if (syncStartDate && syncEndDate) {
+            if (employeeId) {
+                markMissingAbsences(employeeId, syncStartDate, syncEndDate).catch(e => console.error('Absence sync error:', e.message));
+            } else if (employeesOnly === 'true' && employeeUsers.length > 0) {
+                // Background sync for all employees - to avoid blocking, we do it in batches or just trigger for each
+                // Since this is a small team (per role count), we can trigger for each
+                employeeUsers.forEach(u => {
+                    const identifier = u.employeeId || u._id;
+                    markMissingAbsences(identifier, syncStartDate, syncEndDate).catch(e => console.error(`Absence sync error for ${identifier}:`, e.message));
+                });
+            } else if (!isHR) {
+                // Also trigger for the self view
+                const userIdentifier = req.user.employeeId || req.user._id;
+                markMissingAbsences(userIdentifier, syncStartDate, syncEndDate).catch(e => console.error('Absence sync error:', e.message));
             }
         }
 
@@ -100,48 +128,52 @@ export const getAttendanceRecords = async (req, res) => {
             });
         }
 
-        // For records where employeeId didn't populate (might be User ID), try to get employee info via User
+        // For records where employeeId didn't populate (might be User ID or missing Employee record), 
+        // try to get employee info via User
         records = await Promise.all(records.map(async (record) => {
             const recordObj = record.toObject();
 
-            // If employeeId wasn't populated properly (no personalInfo), try to find via userId or direct lookup
-            if (!recordObj.employeeId?.personalInfo && recordObj.employeeId) {
+            // If employeeId wasn't populated properly (null or no personalInfo), 
+            // try to find info using userId or the stored employeeId value
+            if (!recordObj.employeeId?.personalInfo) {
                 try {
-                    // First check if we have userId populated
-                    if (recordObj.userId?.employeeId) {
-                        const employee = await Employee.findById(recordObj.userId.employeeId)
-                            .select('personalInfo.firstName personalInfo.lastName employeeCode employmentInfo.designation employmentInfo.department');
-                        if (employee) {
-                            recordObj.employeeId = employee;
-                        }
-                    } else {
-                        // Try to find User by the stored employeeId (which might be a User ID)
-                        const user = await User.findById(recordObj.employeeId).populate('employeeId');
-                        if (user?.employeeId) {
-                            const employee = await Employee.findById(user.employeeId)
-                                .select('personalInfo.firstName personalInfo.lastName employeeCode employmentInfo.designation employmentInfo.department');
-                            if (employee) {
-                                recordObj.employeeId = employee;
-                            }
+                    // Fallback identifier: check the original record's employeeId (might be a string ID) 
+                    // or the populated userId
+                    const rawRecord = await Attendance.findById(recordObj._id).select('employeeId userId');
+                    const identifier = rawRecord.employeeId || (recordObj.userId?._id || recordObj.userId);
+
+                    if (identifier) {
+                        // Try to find User and see if they have an associated employeeId
+                        const user = await User.findById(identifier).populate('employeeId');
+                        
+                        if (user?.employeeId && user.employeeId.personalInfo) {
+                            // Found real Employee record through the User
+                            recordObj.employeeId = user.employeeId;
                         } else if (user) {
-                            // Create a pseudo-employee object from user data
+                            // No Employee record, create a pseudo-employee object from account data
                             recordObj.employeeId = {
                                 _id: user._id,
-                                employeeCode: '-',
+                                employeeCode: user.employeeId || '-',
                                 personalInfo: {
                                     firstName: user.firstName,
                                     lastName: user.lastName
                                 },
                                 employmentInfo: {
-                                    designation: user.role || '-',
+                                    designation: user.role || 'Staff',
                                     department: '-'
                                 }
                             };
+                        } else if (mongoose.isValidObjectId(identifier)) {
+                            // Last ditch: maybe the identifier itself is an Employee ID that just failed populate?
+                            const directEmployee = await Employee.findById(identifier)
+                                .select('personalInfo.firstName personalInfo.lastName employeeCode employmentInfo.designation employmentInfo.department');
+                            if (directEmployee) {
+                                recordObj.employeeId = directEmployee;
+                            }
                         }
                     }
                 } catch (e) {
-                    // If lookup fails, keep original
-                    console.error('Error looking up employee info:', e.message);
+                    console.error('Error looking up employee info for attendance:', e.message);
                 }
             }
             return recordObj;
@@ -526,6 +558,110 @@ export const regularizeAttendance = async (req, res) => {
 // @desc    Get attendance summary
 // @route   GET /api/attendance/summary
 // @access  Private
+// Helper to mark missing absences for a date range
+const markMissingAbsences = async (targetIdentifier, startDate, endDate) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Define the limit (up to yesterday, or the requested endDate if earlier)
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const limitDate = new Date(Math.min(endDate.getTime(), yesterday.getTime()));
+        if (startDate > limitDate) return;
+
+        // 1. Get user's shift info
+        const employee = await Employee.findOne({
+            $or: [
+                { _id: mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : null },
+                { userId: mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : null }
+            ]
+        }).populate('employmentInfo.shift');
+
+        const shiftWorkingDays = employee?.employmentInfo?.shift?.workingDays || [1, 2, 3, 4, 5]; // Default Mon-Fri
+
+        // 2. Get existing attendance records in this range
+        const existingRecords = await Attendance.find({
+            $or: [
+                { employeeId: targetIdentifier },
+                { userId: targetIdentifier }
+            ],
+            date: { $gte: startDate, $lte: limitDate }
+        });
+        const existingDates = new Set(existingRecords.map(r => r.date.toDateString()));
+
+        // 3. Get holidays
+        const holidays = await Holiday.find({
+            date: { $gte: startDate, $lte: limitDate },
+            isActive: true
+        });
+        const holidayDates = new Set(holidays.map(h => h.date.toDateString()));
+
+        // 4. Get approved leaves
+        const leaves = await Leave.find({
+            $or: [
+                { employeeId: targetIdentifier },
+                { userId: targetIdentifier }
+            ],
+            status: 'approved',
+            $or: [
+                { startDate: { $lte: limitDate }, endDate: { $gte: startDate } }
+            ]
+        });
+
+        // 5. Loop through dates and mark absent if missing
+        const d = new Date(startDate);
+        const absentRecords = [];
+
+        while (d <= limitDate) {
+            const dateStr = d.toDateString();
+            const dayOfWeek = d.getDay();
+
+            // Check if it's a working day and missing data
+            if (shiftWorkingDays.includes(dayOfWeek) &&
+                !existingDates.has(dateStr) &&
+                !holidayDates.has(dateStr)) {
+
+                // Check if on leave
+                const onLeave = leaves.some(l => {
+                    const lStart = new Date(l.startDate);
+                    lStart.setHours(0, 0, 0, 0);
+                    const lEnd = new Date(l.endDate);
+                    lEnd.setHours(0, 0, 0, 0);
+                    const currentD = new Date(d);
+                    currentD.setHours(0, 0, 0, 0);
+                    return currentD >= lStart && currentD <= lEnd;
+                });
+
+                if (!onLeave) {
+                    absentRecords.push({
+                        employeeId: employee?._id || (mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : undefined),
+                        userId: employee?.userId || (mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : undefined),
+                        date: new Date(d),
+                        status: 'absent',
+                        remarks: 'Automatically marked absent for missed working day'
+                    });
+                }
+            }
+            d.setDate(d.getDate() + 1);
+        }
+
+        if (absentRecords.length > 0) {
+            // Using insertMany with ordered: false to skip duplicates
+            await Attendance.insertMany(absentRecords, { ordered: false }).catch(err => {
+                // Ignore duplicate key errors
+                if (err.code !== 11000) console.error('Error inserting absences:', err.message);
+            });
+        }
+    } catch (error) {
+        console.error('Error marking missing absences:', error.message);
+    }
+};
+
+// @desc    Get attendance summary
+// @route   GET /api/attendance/summary
+// @access  Private
 export const getAttendanceSummary = async (req, res) => {
     try {
         const { employeeId, month, year } = req.query;
@@ -538,7 +674,12 @@ export const getAttendanceSummary = async (req, res) => {
         const startDate = new Date(targetYear, targetMonth - 1, 1);
         const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
 
-        // Robust query checking both possible identifier fields
+        // Run database sync for missing absences in background (don't await for faster dashboard response)
+        markMissingAbsences(targetIdentifier, startDate, endDate).catch(err =>
+            console.error('Background absence sync failed:', err.message)
+        );
+
+        // 1. Fetch existing attendance records
         const query = {
             $or: [
                 { employeeId: targetIdentifier },
@@ -549,16 +690,60 @@ export const getAttendanceSummary = async (req, res) => {
 
         const records = await Attendance.find(query);
 
-        // Fetch holidays for the period
-        const holidays = await Holiday.find({
-            date: { $gte: startDate, $lte: endDate },
-            isActive: true
-        });
+        // 2. Fetch holidays and leaves for virtual calculation
+        const [holidays, leaves, employee] = await Promise.all([
+            Holiday.find({ date: { $gte: startDate, $lte: endDate }, isActive: true }),
+            Leave.find({
+                $or: [{ employeeId: targetIdentifier }, { userId: targetIdentifier }],
+                status: 'approved',
+                $or: [{ startDate: { $lte: endDate }, endDate: { $gte: startDate } }]
+            }),
+            Employee.findOne({
+                $or: [
+                    { _id: mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : null },
+                    { userId: mongoose.isValidObjectId(targetIdentifier) ? targetIdentifier : null }
+                ]
+            }).populate('employmentInfo.shift')
+        ]);
+
+        // 3. Calculate "Virtual" Absences to ensure graph is accurate immediately
+        // This counts days that ARE working days but have NO record, NO holiday, and NO leave
+        const existingDates = new Set(records.map(r => r.date.toDateString()));
+        const holidayDates = new Set(holidays.map(h => h.date.toDateString()));
+        const shiftWorkingDays = employee?.employmentInfo?.shift?.workingDays || [1, 2, 3, 4, 5];
+
+        let virtualAbsentCount = 0;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const cursorDate = new Date(startDate);
+        const calculationEndDate = new Date(Math.min(endDate.getTime(), today.getTime() - 86400000)); // Up to yesterday
+
+        while (cursorDate <= calculationEndDate) {
+            const dateStr = cursorDate.toDateString();
+            const dayOfWeek = cursorDate.getDay();
+
+            if (shiftWorkingDays.includes(dayOfWeek) &&
+                !existingDates.has(dateStr) &&
+                !holidayDates.has(dateStr)) {
+
+                // Check if on leave
+                const onLeave = leaves.some(l => {
+                    const lStart = new Date(l.startDate); lStart.setHours(0, 0, 0, 0);
+                    const lEnd = new Date(l.endDate); lEnd.setHours(0, 0, 0, 0);
+                    const curr = new Date(cursorDate); curr.setHours(0, 0, 0, 0);
+                    return curr >= lStart && curr <= lEnd;
+                });
+
+                if (!onLeave) virtualAbsentCount++;
+            }
+            cursorDate.setDate(cursorDate.getDate() + 1);
+        }
 
         const summary = {
             totalDays: endDate.getDate(),
             present: records.filter(r => r.status === 'present').length,
-            absent: records.filter(r => r.status === 'absent').length,
+            absent: records.filter(r => r.status === 'absent').length + virtualAbsentCount,
             late: records.filter(r => r.status === 'late').length,
             halfDay: records.filter(r => r.status === 'half-day').length,
             onLeave: records.filter(r => r.status === 'on-leave').length,

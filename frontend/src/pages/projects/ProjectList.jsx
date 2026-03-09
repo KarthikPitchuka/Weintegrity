@@ -88,8 +88,8 @@ const ProjectList = () => {
             {/* Filters */}
             <div className="card p-4">
                 <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
-                        <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                    <div className="flex-1 relative group">
+                        <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                         <input
                             type="text"
                             placeholder="Search projects or clients..."
@@ -99,8 +99,8 @@ const ProjectList = () => {
                         />
                     </div>
                     <div className="flex gap-4">
-                        <div className="relative">
-                            <HiOutlineFilter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                        <div className="relative group">
+                            <HiOutlineFilter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -144,9 +144,14 @@ const ProjectList = () => {
                                 <div className="p-2.5 rounded-xl bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white transition-colors">
                                     <HiOutlineBriefcase className="w-6 h-6" />
                                 </div>
-                                <span className={getStatusBadgeClass(project.status)}>
-                                    {project.status.replace('-', ' ')}
-                                </span>
+                                <div className="flex flex-col items-end gap-1.5">
+                                    <span className={getStatusBadgeClass(project.status)}>
+                                        {project.status.replace('-', ' ')}
+                                    </span>
+                                    <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-slate-200">
+                                        {project.category || 'General'}
+                                    </span>
+                                </div>
                             </div>
 
                             <h3 className="text-lg font-bold text-slate-900 group-hover:text-primary-600 transition-colors mb-2 truncate">
@@ -159,14 +164,31 @@ const ProjectList = () => {
                                 </p>
                             )}
 
+                            {/* Progress Indicator */}
+                            <div className="mb-4">
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Progress</span>
+                                    <span className="text-[10px] font-bold text-primary-600">{project.progress || 0}%</span>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${project.progress === 100 ? 'bg-emerald-500' : 'bg-primary-600'}`}
+                                        style={{ width: `${project.progress || 0}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+
                             <div className="space-y-3 pt-4 border-t border-slate-50">
                                 <div className="flex items-center justify-between text-sm">
                                     <div className="flex items-center gap-2 text-slate-500">
                                         <HiOutlineClock className="w-4 h-4" />
                                         <span>Deadline:</span>
                                     </div>
-                                    <span className="font-medium text-slate-700">
-                                        {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'N/A'}
+                                    <span className={`font-medium ${project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' ? 'text-red-600 flex items-center gap-1' : 'text-slate-700'}`}>
+                                        {project.endDate ? new Date(project.endDate).toLocaleDateString('en-GB') : 'N/A'}
+                                        {project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' && (
+                                            <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold uppercase">Overdue</span>
+                                        )}
                                     </span>
                                 </div>
 

@@ -20,6 +20,7 @@ const AddEmployee = () => {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [shifts, setShifts] = useState([]);
+    const [employees, setEmployees] = useState([]);
     const [formData, setFormData] = useState({
         // Personal Info
         firstName: '',
@@ -35,6 +36,7 @@ const AddEmployee = () => {
         employmentType: 'full-time',
         workLocation: '',
         shift: '',
+        reportingManager: '',
         // Address
         address: '',
         city: '',
@@ -65,17 +67,21 @@ const AddEmployee = () => {
         { value: 'intern', label: 'Intern' }
     ];
 
-    // Fetch shifts on component mount
+    // Fetch shifts and employees on component mount
     useEffect(() => {
-        const fetchShifts = async () => {
+        const fetchData = async () => {
             try {
-                const res = await api.get('/organization/shifts');
-                setShifts(res.data || []);
+                const [shiftsRes, employeesRes] = await Promise.all([
+                    api.get('/organization/shifts'),
+                    api.get('/employees?limit=1000')
+                ]);
+                setShifts(shiftsRes.data || []);
+                setEmployees(employeesRes.data.employees || []);
             } catch (error) {
-                console.error('Failed to fetch shifts:', error);
+                console.error('Failed to fetch data:', error);
             }
         };
-        fetchShifts();
+        fetchData();
     }, []);
 
     const [showOtpModal, setShowOtpModal] = useState(false);
@@ -190,7 +196,8 @@ const AddEmployee = () => {
                     employmentType: formData.employmentType,
                     joiningDate: formData.joiningDate,
                     workLocation: formData.workLocation || undefined,
-                    shift: formData.shift || undefined
+                    shift: formData.shift || undefined,
+                    reportingManager: formData.reportingManager || undefined
                 },
                 bankDetails: {
                     bankName: formData.bankName || undefined,
@@ -355,6 +362,22 @@ const AddEmployee = () => {
                                 placeholder="Software Developer"
                                 required
                             />
+                        </div>
+                        <div>
+                            <label className="label">Reporting Manager</label>
+                            <select
+                                name="reportingManager"
+                                value={formData.reportingManager}
+                                onChange={handleChange}
+                                className="input"
+                            >
+                                <option value="">Select Reporting Manager</option>
+                                {employees.map(emp => (
+                                    <option key={emp._id} value={emp._id}>
+                                        {emp.personalInfo.firstName} {emp.personalInfo.lastName} ({emp.employeeCode})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div>
                             <label className="label">Employment Type</label>

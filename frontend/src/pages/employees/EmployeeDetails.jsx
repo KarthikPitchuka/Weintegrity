@@ -62,6 +62,7 @@ const EmployeeDetails = () => {
     const [saveMessage, setSaveMessage] = useState({ type: '', text: '' });
     const [showPassword, setShowPassword] = useState(false);
     const [shifts, setShifts] = useState([]);
+    const [employees, setEmployees] = useState([]);
 
     const [initialFormState, setInitialFormState] = useState(null);
     const [reviewMode, setReviewMode] = useState(false);
@@ -102,7 +103,8 @@ const EmployeeDetails = () => {
             workLocation: '',
             employmentType: 'full-time',
             joiningDate: '',
-            shift: ''
+            shift: '',
+            reportingManager: ''
         },
         bankDetails: {
             bankName: '',
@@ -198,7 +200,8 @@ const EmployeeDetails = () => {
             workLocation: emp.employmentInfo?.workLocation || '',
             employmentType: emp.employmentInfo?.employmentType || 'full-time',
             joiningDate: emp.employmentInfo?.joiningDate ? emp.employmentInfo.joiningDate.split('T')[0] : '',
-            shift: emp.employmentInfo?.shift?._id || emp.employmentInfo?.shift || ''
+            shift: emp.employmentInfo?.shift?._id || emp.employmentInfo?.shift || '',
+            reportingManager: emp.employmentInfo?.reportingManager?._id || emp.employmentInfo?.reportingManager || ''
         },
         bankDetails: {
             bankName: emp.bankDetails?.bankName || '',
@@ -216,19 +219,21 @@ const EmployeeDetails = () => {
         if (id) {
             fetchEmployee();
         }
-        // Fetch shifts for dropdown
-        const fetchShifts = async () => {
+        // Fetch shifts and employees for dropdowns
+        const fetchDropdowns = async () => {
             try {
                 const token = localStorage.getItem('token');
-                const res = await axios.get(`${API_URL}/organization/shifts`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setShifts(res.data || []);
+                const [shiftsRes, employeesRes] = await Promise.all([
+                    axios.get(`${API_URL}/organization/shifts`, { headers: { Authorization: `Bearer ${token}` } }),
+                    axios.get(`${API_URL}/employees?limit=1000`, { headers: { Authorization: `Bearer ${token}` } })
+                ]);
+                setShifts(shiftsRes.data || []);
+                setEmployees(employeesRes.data.employees || []);
             } catch (error) {
-                console.error('Failed to fetch shifts:', error);
+                console.error('Failed to fetch dropdown data:', error);
             }
         };
-        fetchShifts();
+        fetchDropdowns();
     }, [id]);
 
     const handleEditClick = () => {
@@ -237,8 +242,9 @@ const EmployeeDetails = () => {
             return;
         }
         const formState = createFormState(employee);
-        setEditForm(formState);
-        setInitialFormState(formState);
+        // Deep copy to prevent shared object references
+        setEditForm(JSON.parse(JSON.stringify(formState)));
+        setInitialFormState(JSON.parse(JSON.stringify(formState)));
         setShowEditModal(true);
         setReviewMode(false);
         setSaveMessage({ type: '', text: '' });
@@ -444,10 +450,12 @@ const EmployeeDetails = () => {
 
             // Show more detailed error message
             let errorMessage = 'Failed to update employee';
-            if (err.response?.data?.message) {
-                errorMessage = err.response.data.message;
+            if (err.response?.data?.message && err.response?.data?.error) {
+                errorMessage = `${err.response.data.message}: ${err.response.data.error}`;
             } else if (err.response?.data?.error) {
                 errorMessage = err.response.data.error;
+            } else if (err.response?.data?.message) {
+                errorMessage = err.response.data.message;
             } else if (err.message) {
                 errorMessage = err.message;
             }
@@ -456,6 +464,7 @@ const EmployeeDetails = () => {
                 type: 'error',
                 text: errorMessage
             });
+            toast.error(errorMessage);
         } finally {
             setSaving(false);
         }
@@ -550,10 +559,10 @@ const EmployeeDetails = () => {
             </div>
 
             {/* Premium Header Profile Card */}
-            <div className="relative overflow-hidden rounded-3xl bg-white shadow-xl border border-white/20">
+            <div className="relative overflow-hidden rounded-3xl bg-indigo-800 shadow-xl border border-white/20">
                 {/* Decorative Background */}
-                <div className="absolute top-0 w-full h-48 bg-gradient-to-br from-indigo-700 via-blue-800 to-slate-900"></div>
-                <div className="absolute top-0 w-full h-48 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                <div className="absolute inset-0 bg-indigo-800"></div>
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay"></div>
 
                 <div className="relative px-8 pt-24 pb-8">
                     <div className="flex flex-col md:flex-row items-end gap-6">
@@ -1028,33 +1037,7 @@ const EmployeeDetails = () => {
                         )}
                     </div>
 
-                    {/* Performance Summary Placeholder */}
-                    <div className="bg-gradient-to-br from-indigo-700 to-indigo-900 rounded-3xl shadow-lg p-8 text-white relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
-                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                            <HiOutlineStar className="w-5 h-5 text-yellow-300 shadow-[0_0_10px_rgba(253,224,71,0.5)]" />
-                            Performance Summary
-                        </h3>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center text-sm">
-                                <span className="text-indigo-100">Performance Status</span>
-                                <span className="font-bold bg-white/20 px-2 py-0.5 rounded text-xs">
-                                    {performanceHistory.length > 0 ? (performanceHistory[performanceHistory.length - 1].performanceBand?.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Exceeding Expectations') : 'Exceeding Expectations'}
-                                </span>
-                            </div>
-                            <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-gradient-to-r from-yellow-300 to-yellow-500 transition-all duration-1000"
-                                    style={{ width: `${(performanceHistory.length > 0 ? performanceHistory[performanceHistory.length - 1].overallRating / 5 : 0.92) * 100}%` }}
-                                ></div>
-                            </div>
-                            <p className="text-xs text-indigo-100/70 leading-relaxed italic">
-                                {performanceHistory.length > 0 && performanceHistory[performanceHistory.length - 1].managerAssessment?.comments ?
-                                    `"${performanceHistory[performanceHistory.length - 1].managerAssessment.comments}"` :
-                                    '"Consistently demonstrates strong leadership and technical expertise in software development roles."'}
-                            </p>
-                        </div>
-                    </div>
+
                 </div>
             </div>
             {/* Edit Modal */}
@@ -1086,6 +1069,13 @@ const EmployeeDetails = () => {
 
                             {reviewMode ? (
                                 <div className="space-y-6 animate-fadeIn">
+                                    {/* Error Message in Review Mode */}
+                                    {saveMessage.text && (
+                                        <div className={`p-4 rounded-lg ${saveMessage.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                                            {saveMessage.text}
+                                        </div>
+                                    )}
+
                                     {changedFields.length > 0 ? (
                                         <div className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
                                             <div className="grid grid-cols-3 bg-slate-100 p-4 font-semibold text-slate-500 text-sm uppercase tracking-wider">
@@ -1416,6 +1406,28 @@ const EmployeeDetails = () => {
                                                         {shifts.find(s => s._id === editForm.employmentInfo.shift)?.timing?.fullDayHours || 8}h/day
                                                     </p>
                                                 )}
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Reporting Manager</label>
+                                                <div className="relative">
+                                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                                        <HiOutlineBriefcase className="h-5 w-5 text-slate-400" />
+                                                    </div>
+                                                    <select
+                                                        value={editForm.employmentInfo.reportingManager}
+                                                        onChange={(e) => handleInputChange('employmentInfo', 'reportingManager', e.target.value)}
+                                                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-700 appearance-none"
+                                                    >
+                                                        <option value="">Select Reporting Manager</option>
+                                                        {employees
+                                                            .filter(emp => emp._id !== id) // Exclude self
+                                                            .map(emp => (
+                                                                <option key={emp._id} value={emp._id}>
+                                                                    {emp.personalInfo.firstName} {emp.personalInfo.lastName} ({emp.employeeCode})
+                                                                </option>
+                                                            ))}
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

@@ -1,13 +1,77 @@
+import { useState } from 'react';
 import { HiOutlineChartPie, HiOutlineDownload } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import api from '../../services/api';
 
 const Reports = () => {
+    const [loading, setLoading] = useState({});
+
     const reportTypes = [
-        { title: 'Attendance Report', description: 'Monthly attendance summary for all employees', type: 'Monthly' },
-        { title: 'Payroll Summary', description: 'Detailed payroll breakdown and expenses', type: 'Financial' },
-        { title: 'Leave Utilization', description: 'Analysis of leave patterns and balances', type: 'HR' },
-        { title: 'Employee Turnover', description: 'Hiring and attrition metrics', type: 'HR' },
+        {
+            title: 'Attendance Report',
+            description: 'Monthly attendance summary for all employees',
+            type: 'Monthly',
+            endpoint: '/reports/attendance',
+            requiresMonth: true
+        },
+        {
+            title: 'Payroll Summary',
+            description: 'Detailed payroll breakdown and expenses',
+            type: 'Financial',
+            endpoint: '/reports/payroll',
+            requiresMonth: true
+        },
+        {
+            title: 'Leave Utilization',
+            description: 'Analysis of leave patterns and balances',
+            type: 'HR',
+            endpoint: '/reports/leave',
+            requiresMonth: false
+        },
+        {
+            title: 'Employee Turnover',
+            description: 'Hiring and attrition metrics',
+            type: 'HR',
+            endpoint: '/reports/turnover',
+            requiresMonth: false
+        },
     ];
+
+    const handleGenerateReport = async (report) => {
+        try {
+            setLoading(prev => ({ ...prev, [report.title]: true }));
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = today.getMonth() + 1;
+
+            const response = await api.get(report.endpoint, {
+                params: { year, month },
+                responseType: 'blob'
+            });
+
+            // Create blob link to download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+
+            // Filename
+            const filename = report.requiresMonth
+                ? `${report.title.replace(/\s+/g, '_')}_${year}_${month}.csv`
+                : `${report.title.replace(/\s+/g, '_')}_${year}.csv`;
+
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            toast.success(`${report.title} downloaded successfully`);
+        } catch (error) {
+            console.error('Download error:', error);
+            toast.error('Failed to generate report');
+        } finally {
+            setLoading(prev => ({ ...prev, [report.title]: false }));
+        }
+    };
 
     return (
         <div className="space-y-6 animate-fadeIn">
@@ -23,25 +87,35 @@ const Reports = () => {
                     <div key={idx} className="card p-6 flex flex-col justify-between h-48 hover:shadow-card-hover transition-all duration-300">
                         <div>
                             <div className="flex justify-between items-start mb-4">
-                                <span className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-semibold uppercase tracking-wider">{report.type}</span>
-                                <HiOutlineChartPie className="w-6 h-6 text-secondary-400" />
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${report.type === 'Financial' ? 'bg-green-100 text-green-700' :
+                                    report.type === 'HR' ? 'bg-purple-100 text-purple-700' :
+                                        'bg-blue-100 text-blue-700'
+                                    }`}>
+                                    {report.type}
+                                </span>
+                                <div className="p-2 bg-secondary-50 rounded-lg">
+                                    <HiOutlineChartPie className="w-5 h-5 text-secondary-400" />
+                                </div>
                             </div>
                             <h3 className="font-bold text-lg text-secondary-900 mb-2">{report.title}</h3>
                             <p className="text-secondary-500 text-sm">{report.description}</p>
                         </div>
                         <button
-                            onClick={() => toast.success(`${report.title} generation started. You will be notified when ready.`, {
-                                icon: '📥',
-                                style: {
-                                    borderRadius: '10px',
-                                    background: '#333',
-                                    color: '#fff',
-                                },
-                            })}
-                            className="flex items-center gap-2 text-primary-600 font-medium hover:text-primary-800 transition-colors mt-4 text-sm group"
+                            onClick={() => handleGenerateReport(report)}
+                            disabled={loading[report.title]}
+                            className="flex items-center gap-2 text-primary-600 font-medium hover:text-primary-800 transition-colors mt-4 text-sm group disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <HiOutlineDownload className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                            Generate Report
+                            {loading[report.title] ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Generating...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <HiOutlineDownload className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                    <span>Generate Report</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 ))}

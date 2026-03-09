@@ -1,32 +1,36 @@
 import Document from '../models/Document.js';
 import multer from 'multer';
 import path from 'path';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import stream from 'stream';
 import fs from 'fs';
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadPath = process.env.UPLOAD_PATH || './uploads';
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+// Ensure environment variables are loaded so MONGODB_URI is available
+dotenv.config();
+
+let gridfsBucket;
+const getGridFSBucket = () => {
+    if (gridfsBucket) return gridfsBucket;
+    if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+        gridfsBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+            bucketName: 'uploads'
+        });
+        return gridfsBucket;
     }
-});
+    return null;
+};
+
+// Configure multer to use memory buffer
+const storage = multer.memoryStorage();
 
 export const upload = multer({
     storage,
     limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5242880 },
     fileFilter: (req, file, cb) => {
-        // Allowed file extensions
         const allowedExtensions = /pdf|doc|docx|jpg|jpeg|png|gif/i;
         const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
 
-        // Allowed mimetypes
         const allowedMimetypes = [
             'application/pdf',
             'application/msword',
@@ -58,14 +62,12 @@ export const getDocuments = async (req, res) => {
         if (documentType) query.documentType = documentType;
         if (status) query.verificationStatus = status;
 
-        // HR and admin roles can see all documents (including company-wide ones with null employeeId)
+        // HR and admin roles can see all documents
         const hrRoles = ['admin', 'HRManager', 'HRExecutive', 'SuperAdmin'];
         if (!hrRoles.includes(req.user.role)) {
-            // Regular employees only see their own documents
             if (req.user.employeeId) {
                 query.employeeId = req.user.employeeId;
             } else {
-                // If no employeeId linked, show company-wide documents only
                 query.employeeId = null;
             }
         }
@@ -123,30 +125,57 @@ export const uploadDocument = async (req, res) => {
         }
 
         const { employeeId, documentType, category, title, description, isConfidential, validFrom, validUntil, tags } = req.body;
-
-        // Determine employeeId - use provided, fallback to user's linked employee, or leave null for company docs
         let docEmployeeId = employeeId || req.user.employeeId || null;
 
-        const document = await Document.create({
-            employeeId: docEmployeeId,
-            documentType,
-            category: category || 'General',
-            title,
-            description,
-            fileName: req.file.filename,
-            originalName: req.file.originalname,
-            fileType: req.file.mimetype,
-            fileSize: req.file.size,
-            fileUrl: `/uploads/${req.file.filename}`,
-            isConfidential: isConfidential === 'true',
-            validFrom,
-            validUntil,
-            tags: tags ? tags.split(',').map(t => t.trim()) : [],
-            accessibleBy: ['hr', 'admin'],
-            uploadedBy: req.user._id
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = req.file.fieldname + '-' + uniqueSuffix + path.extname(req.file.originalname);
+
+        const bucket = getGridFSBucket();
+        if (!bucket) {
+            return res.status(500).json({ message: 'Database file stream not initialized' });
+        }
+
+        const uploadStream = bucket.openUploadStream(filename, {
+            contentType: req.file.mimetype,
+            metadata: {
+                originalname: req.file.originalname
+            }
         });
 
-        res.status(201).json({ message: 'Document uploaded successfully', document });
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(req.file.buffer);
+        bufferStream.pipe(uploadStream);
+
+        uploadStream.on('error', (error) => {
+            return res.status(500).json({ message: 'Error uploading stream to GridFS', error: error.message });
+        });
+
+        uploadStream.on('finish', async () => {
+            try {
+                const document = await Document.create({
+                    employeeId: docEmployeeId,
+                    documentType,
+                    category: category || 'General',
+                    title,
+                    description,
+                    fileName: filename,
+                    originalName: req.file.originalname,
+                    fileType: req.file.mimetype,
+                    fileSize: req.file.size,
+                    fileUrl: `/api/documents/files/${filename}`,
+                    isConfidential: isConfidential === 'true',
+                    validFrom,
+                    validUntil,
+                    tags: tags ? tags.split(',').map(t => t.trim()) : [],
+                    accessibleBy: ['hr', 'admin'],
+                    uploadedBy: req.user._id
+                });
+                return res.status(201).json({ message: 'Document uploaded successfully', document });
+            } catch (err) {
+                return res.status(500).json({ message: 'Error creating document record', error: err.message });
+            }
+        });
+
     } catch (error) {
         res.status(500).json({ message: 'Error uploading document', error: error.message });
     }
@@ -175,7 +204,7 @@ export const updateDocument = async (req, res) => {
 
 // @desc    Delete document
 // @route   DELETE /api/documents/:id
-// @access  Private (HR, Admin)
+// @access  Private
 export const deleteDocument = async (req, res) => {
     try {
         const document = await Document.findById(req.params.id);
@@ -184,7 +213,6 @@ export const deleteDocument = async (req, res) => {
             return res.status(404).json({ message: 'Document not found' });
         }
 
-        // Permission check: HR/Admin can delete any. Employee can only delete their own.
         const hrRoles = ['admin', 'HRManager', 'HRExecutive', 'SuperAdmin'];
         const isOwner = document.uploadedBy && document.uploadedBy.toString() === req.user._id.toString();
 
@@ -192,10 +220,20 @@ export const deleteDocument = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to delete this document' });
         }
 
-        // Delete file from storage
-        const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        // Delete from GridFS
+        const bucket = getGridFSBucket();
+        if (bucket && document.fileName && !document.fileUrl?.startsWith('/uploads/')) {
+            const files = await mongoose.connection.db.collection('uploads.files')
+                .find({ filename: document.fileName }).toArray();
+            if (files.length > 0) {
+                await bucket.delete(files[0]._id);
+            }
+        } else if (document.fileUrl?.startsWith('/uploads/')) {
+            // Delete local file
+            const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
         }
 
         await Document.findByIdAndDelete(req.params.id);
@@ -208,7 +246,7 @@ export const deleteDocument = async (req, res) => {
 
 // @desc    Verify document
 // @route   PUT /api/documents/:id/verify
-// @access  Private (HR, Admin)
+// @access  Private
 export const verifyDocument = async (req, res) => {
     try {
         const { status, notes } = req.body;
@@ -247,13 +285,28 @@ export const downloadDocument = async (req, res) => {
             return res.status(404).json({ message: 'Document not found' });
         }
 
-        const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ message: 'File not found' });
+        if (document.fileUrl && document.fileUrl.startsWith('/uploads/') && !document.fileUrl.includes('/api/')) {
+            const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
+            if (fs.existsSync(filePath)) {
+                res.set('Content-Type', document.fileType || 'application/octet-stream');
+                res.set('Content-Disposition', `attachment; filename="${document.originalName}"`);
+                return res.download(filePath, document.originalName);
+            }
         }
 
-        res.download(filePath, document.originalName);
+        const bucket = getGridFSBucket();
+        if (bucket) {
+            res.set('Content-Type', document.fileType || 'application/octet-stream');
+            res.set('Content-Disposition', `attachment; filename="${document.originalName}"`);
+
+            const downloadStream = bucket.openDownloadStreamByName(document.fileName);
+            downloadStream.on('error', () => {
+                res.status(404).json({ message: 'File stream not found in DB' })
+            });
+            downloadStream.pipe(res);
+        } else {
+            res.status(500).json({ message: 'Database file stream not initialized' });
+        }
     } catch (error) {
         res.status(500).json({ message: 'Error downloading document', error: error.message });
     }
@@ -270,24 +323,58 @@ export const viewDocument = async (req, res) => {
             return res.status(404).json({ message: 'Document not found' });
         }
 
-        const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ message: 'File not found' });
-        }
-
-        // Set content type based on file type
         const contentType = document.fileType || 'application/octet-stream';
-
-        // Set headers for inline viewing
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${document.originalName}"`);
 
-        // Stream the file
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.pipe(res);
+        if (document.fileUrl && document.fileUrl.startsWith('/uploads/') && !document.fileUrl.includes('/api/')) {
+            const filePath = path.join(process.env.UPLOAD_PATH || './uploads', document.fileName);
+            if (fs.existsSync(filePath)) {
+                const fileStream = fs.createReadStream(filePath);
+                return fileStream.pipe(res);
+            }
+        }
+
+        const bucket = getGridFSBucket();
+        if (bucket) {
+            const downloadStream = bucket.openDownloadStreamByName(document.fileName);
+            downloadStream.on('error', () => {
+                res.status(404).json({ message: 'File stream not found in DB' })
+            });
+            downloadStream.pipe(res);
+        } else {
+            res.status(500).json({ message: 'Database file stream not initialized' });
+        }
     } catch (error) {
         res.status(500).json({ message: 'Error viewing document', error: error.message });
+    }
+};
+
+// @desc    Serve file directly by filename
+// @route   GET /api/documents/files/:filename
+// @access  Private
+export const serveFileByName = async (req, res) => {
+    try {
+        const bucket = getGridFSBucket();
+        if (!bucket) {
+            return res.status(500).json({ message: 'Database file stream not initialized' });
+        }
+
+        const files = await mongoose.connection.db.collection('uploads.files').find({ filename: req.params.filename }).toArray();
+        if (!files || files.length === 0) {
+            return res.status(404).json({ message: 'File not found' });
+        }
+
+        res.setHeader('Content-Type', files[0].contentType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${files[0].filename}"`);
+
+        const downloadStream = bucket.openDownloadStreamByName(req.params.filename);
+        downloadStream.on('error', () => {
+            res.status(404).json({ message: 'Error streaming file' })
+        });
+        downloadStream.pipe(res);
+    } catch (error) {
+        res.status(500).json({ message: 'Error serving file by name', error: error.message });
     }
 };
 
@@ -300,5 +387,6 @@ export default {
     verifyDocument,
     downloadDocument,
     viewDocument,
+    serveFileByName,
     upload
 };

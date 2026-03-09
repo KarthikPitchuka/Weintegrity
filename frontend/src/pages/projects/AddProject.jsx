@@ -21,13 +21,21 @@ const AddProject = () => {
         name: '',
         description: '',
         client: '',
+        category: 'Others',
         startDate: '',
         endDate: '',
         status: 'planned',
         priority: 'medium',
         teamLeader: '',
-        teamMembers: []
+        teamMembers: [],
+        budget: { amount: 0, currency: 'USD' },
+        milestones: [],
+        resources: [],
+        tags: ''
     });
+
+    const [newMilestone, setNewMilestone] = useState({ title: '', dueDate: '' });
+    const [newResource, setNewResource] = useState({ name: '', url: '' });
 
     useEffect(() => {
         const fetchEmployees = async () => {
@@ -163,6 +171,46 @@ const AddProject = () => {
                                 <option value="high">High</option>
                             </select>
                         </div>
+
+                        <div>
+                            <label className="label">Category</label>
+                            <select
+                                name="category"
+                                value={formData.category}
+                                onChange={handleChange}
+                                className="input appearance-none"
+                            >
+                                <option value="IT Infrastructure">IT Infrastructure</option>
+                                <option value="Client Delivery">Client Delivery</option>
+                                <option value="Employee Branding">Employee Branding</option>
+                                <option value="R&D">R&D</option>
+                                <option value="Internal Operations">Internal Operations</option>
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="label">Budget Amount</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    value={formData.budget.amount}
+                                    onChange={(e) => setFormData({ ...formData, budget: { ...formData.budget, amount: e.target.value } })}
+                                    className="input flex-1"
+                                    placeholder="0.00"
+                                />
+                                <select
+                                    value={formData.budget.currency}
+                                    onChange={(e) => setFormData({ ...formData, budget: { ...formData.budget, currency: e.target.value } })}
+                                    className="input w-24 appearance-none"
+                                >
+                                    <option value="USD">USD</option>
+                                    <option value="INR">INR</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -196,6 +244,123 @@ const AddProject = () => {
                                 className="input"
                             />
                         </div>
+                    </div>
+                </div>
+
+                {/* Milestones */}
+                <div className="card p-8 bg-white shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-2 mb-6 text-indigo-600">
+                        <HiOutlineCheckCircle className="w-5 h-5" />
+                        <h2 className="text-lg font-bold">Project Milestones</h2>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                                type="text"
+                                placeholder="Milestone title..."
+                                value={newMilestone.title}
+                                onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
+                                className="input flex-1 text-sm"
+                            />
+                            <input
+                                type="date"
+                                value={newMilestone.dueDate}
+                                onChange={(e) => setNewMilestone({ ...newMilestone, dueDate: e.target.value })}
+                                className="input sm:w-48 text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (newMilestone.title) {
+                                        setFormData({ ...formData, milestones: [...formData.milestones, newMilestone] });
+                                        setNewMilestone({ title: '', dueDate: '' });
+                                    }
+                                }}
+                                className="btn-secondary whitespace-nowrap"
+                            >
+                                Add Milestone
+                            </button>
+                        </div>
+
+                        {formData.milestones.length > 0 && (
+                            <div className="space-y-2 mt-4">
+                                {formData.milestones.map((m, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-semibold">{m.title}</span>
+                                            <span className="text-xs text-slate-400">Due: {m.dueDate || 'No date'}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, milestones: formData.milestones.filter((_, i) => i !== idx) })}
+                                            className="text-rose-500 hover:text-rose-700 text-sm font-bold p-2"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Resources */}
+                <div className="card p-8 bg-white shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-2 mb-6 text-emerald-600">
+                        <HiOutlineFlag className="w-5 h-5" />
+                        <h2 className="text-lg font-bold">Project Resources</h2>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                                type="text"
+                                placeholder="Resource name (e.g., Design Folder)"
+                                value={newResource.name}
+                                onChange={(e) => setNewResource({ ...newResource, name: e.target.value })}
+                                className="input flex-1 text-sm"
+                            />
+                            <input
+                                type="url"
+                                placeholder="URL (https://...)"
+                                value={newResource.url}
+                                onChange={(e) => setNewResource({ ...newResource, url: e.target.value })}
+                                className="input flex-1 text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (newResource.name && newResource.url) {
+                                        setFormData({ ...formData, resources: [...formData.resources, newResource] });
+                                        setNewResource({ name: '', url: '' });
+                                    }
+                                }}
+                                className="btn-secondary whitespace-nowrap"
+                            >
+                                Add Resource
+                            </button>
+                        </div>
+
+                        {formData.resources.length > 0 && (
+                            <div className="space-y-2 mt-4">
+                                {formData.resources.map((r, idx) => (
+                                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-semibold">{r.name}</span>
+                                            <span className="text-xs text-indigo-500 truncate max-w-xs">{r.url}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, resources: formData.resources.filter((_, i) => i !== idx) })}
+                                            className="text-rose-500 hover:text-rose-700 text-sm font-bold p-2"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 

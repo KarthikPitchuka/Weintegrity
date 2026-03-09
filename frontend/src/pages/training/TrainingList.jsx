@@ -66,8 +66,8 @@ const TrainingList = () => {
                     <h1 className="page-title">Training & Development</h1>
                     <p className="text-secondary-500 mt-1">Enhance your skills with our training programs</p>
                 </div>
-                <div className="relative">
-                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <div className="relative group">
+                    <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10 w-5 h-5" />
                     <input
                         type="text"
                         placeholder="Search courses..."
@@ -142,8 +142,8 @@ const TrainingList = () => {
                                         onClick={() => !isRegistered && handleRegister(training._id)}
                                         disabled={isRegistered && myStats.status !== 'completed'}
                                         className={`w-full flex items-center justify-center gap-2 btn ${isRegistered
-                                                ? 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200'
-                                                : 'btn-primary'
+                                            ? 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200'
+                                            : 'btn-primary'
                                             }`}
                                     >
                                         {isRegistered ? (

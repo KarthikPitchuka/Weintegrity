@@ -246,10 +246,22 @@ export const updateEmployee = async (req, res) => {
             if (updateData.personalInfo.maritalStatus === '') {
                 delete updateData.personalInfo.maritalStatus;
             }
+            if (updateData.personalInfo.dateOfBirth === '') {
+                updateData.personalInfo.dateOfBirth = null;
+            }
         }
         if (updateData.employmentInfo) {
             if (updateData.employmentInfo.employmentType === '') {
                 delete updateData.employmentInfo.employmentType;
+            }
+            if (updateData.employmentInfo.reportingManager === '') {
+                updateData.employmentInfo.reportingManager = null;
+            }
+            if (updateData.employmentInfo.shift === '') {
+                updateData.employmentInfo.shift = null;
+            }
+            if (updateData.employmentInfo.joiningDate === '') {
+                updateData.employmentInfo.joiningDate = null;
             }
         }
 
@@ -546,9 +558,9 @@ export const getEmployeeStats = async (req, res) => {
 
         res.json({
             totalEmployees,
-            departmentWise,
-            genderWise,
-            employmentTypeWise
+            byDepartment: departmentWise,
+            byGender: genderWise,
+            byEmploymentType: employmentTypeWise
         });
     } catch (error) {
         res.status(500).json({ message: 'Error fetching statistics', error: error.message });

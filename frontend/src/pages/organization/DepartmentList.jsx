@@ -194,8 +194,8 @@ const DepartmentList = () => {
 
             {/* Search */}
             <div className="card p-4">
-                <div className="relative">
-                    <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                <div className="relative group">
+                    <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                     <input
                         type="text"
                         placeholder="Search departments..."

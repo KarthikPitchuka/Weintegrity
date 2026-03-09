@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"employeeId":{"$numberInt":"1"},"reviewPeriod.startDate":{"$numberInt":"1"}},"name":"employeeId_1_reviewPeriod.startDate_1","background":true}],"uuid":"3ccb2a00687f421c925c2ed3aec6e1e5","collectionName":"performances","type":"collection"}

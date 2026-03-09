@@ -126,7 +126,6 @@ payslipSchema.pre('validate', async function (next) {
 
 // Index for efficient queries
 payslipSchema.index({ employeeId: 1, 'payPeriod.year': 1, 'payPeriod.month': 1 });
-payslipSchema.index({ payslipNumber: 1 });
 payslipSchema.index({ generatedAt: -1 });
 
 const Payslip = mongoose.model('Payslip', payslipSchema);

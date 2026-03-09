@@ -203,17 +203,14 @@ const EmployeeDashboard = ({ user }) => {
             // Fetch attendance summary
             const month = new Date().getMonth() + 1;
             const year = new Date().getFullYear();
-            const attendanceRes = await api.get('/attendance/summary', {
-                params: { month, year }
-            });
 
-            // Fetch performance history
-            const performanceRes = await api.get('/performance', {
-                params: { limit: 5 }
-            });
+            const [attendanceRes, performanceRes] = await Promise.all([
+                api.get('/attendance/summary', { params: { month, year } }),
+                api.get('/performance', { params: { limit: 5 } })
+            ]);
 
             setAttendanceSummary(attendanceRes.data.summary);
-            setPerformanceHistory(performanceRes.data.reviews.reverse());
+            setPerformanceHistory(performanceRes.data.reviews ? [...performanceRes.data.reviews].reverse() : []);
         } catch (err) {
             console.error('Error fetching chart data:', err);
         } finally {
@@ -468,7 +465,7 @@ const EmployeeDashboard = ({ user }) => {
                                     <span>✓ Checked in at {formatTime(todayAttendance.checkIn.time || todayAttendance.checkIn)}</span>
                                 )}
                                 {todayAttendance.checkOut && (
-                                    <span className="ml-3">✓ Checked out at {formatTime(todayAttendance.checkOut.time || todayAttendance.checkOut)}</span>
+                                    <span className="ml-3">✓ Checked out at {formatTime(todayAttendance.checkOut?.time)}</span>
                                 )}
                             </div>
                         )}
@@ -860,17 +857,22 @@ const EmployeeDashboard = ({ user }) => {
                                 to={`/projects/${project._id}`}
                                 className="group p-4 bg-white border border-slate-100 rounded-xl hover:border-primary-200 hover:shadow-md transition-all relative overflow-hidden"
                             >
-                                <div className={`absolute top-0 right-0 w-1.5 h-full ${project.priority === 'high' ? 'bg-rose-500' : project.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                                <div className="flex flex-col h-full">
-                                    <h4 className="font-bold text-slate-800 group-hover:text-primary-600 transition-colors truncate mb-1">
+                                <div className={`absolute top-0 left-0 w-1.5 h-full ${project.priority === 'high' ? 'bg-rose-500' : project.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                                <div className="flex flex-col h-full pl-3">
+                                    <h4 className="font-bold text-slate-800 group-hover:text-primary-600 transition-colors truncate mb-1 text-sm">
                                         {project.name}
                                     </h4>
-                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase mb-3">
-                                        <HiOutlineClock className="w-3.5 h-3.5" />
-                                        <span>Deadline: {project.endDate ? new Date(project.endDate).toLocaleDateString() : 'N/A'}</span>
+                                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase mb-3">
+                                        <HiOutlineClock className="w-3.5 h-3.5 text-slate-400" />
+                                        <span className={`${project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' ? 'text-rose-600' : 'text-slate-500'}`}>
+                                            Deadline: {project.endDate ? new Date(project.endDate).toLocaleDateString('en-GB') : 'N/A'}
+                                        </span>
+                                        {project.endDate && new Date(project.endDate) < new Date() && project.status !== 'completed' && (
+                                            <span className="text-[9px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded-full uppercase tracking-tighter">Overdue</span>
+                                        )}
                                     </div>
                                     <div className="mt-auto flex items-center justify-between gap-2">
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${project.status === 'in-progress' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${project.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : project.status === 'in-progress' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                                             {project.status.replace('-', ' ')}
                                         </span>
                                         <div className="flex items-center gap-2">
@@ -884,7 +886,6 @@ const EmployeeDashboard = ({ user }) => {
                                             >
                                                 <HiOutlineChatAlt2 className="w-4 h-4" />
                                             </button>
-                                            <HiOutlineChevronRight className="w-4 h-4 text-slate-300 group-hover:text-primary-500 translate-x-0 group-hover:translate-x-1 transition-all" />
                                         </div>
                                     </div>
                                 </div>

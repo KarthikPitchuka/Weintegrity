@@ -8,6 +8,7 @@ import {
     verifyDocument,
     downloadDocument,
     viewDocument,
+    serveFileByName,
     upload
 } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
@@ -23,6 +24,10 @@ router.use(protect);
 router.route('/')
     .get(getDocuments)
     .post(upload.single('file'), auditLog('DOCUMENT_UPLOAD'), uploadDocument);
+
+// Route for serving actual file stream via URL
+// MUST BE PLACED BEFORE /:id logic, otherwise "files" is interpreted as an ID
+router.get('/files/:filename', serveFileByName);
 
 router.route('/:id')
     .get(getDocument)

@@ -161,8 +161,8 @@ const ShiftList = () => {
 
             {/* Search */}
             <div className="card p-4">
-                <div className="relative">
-                    <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                <div className="relative group">
+                    <HiOutlineSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-500 group-focus-within:text-primary-600 transition-colors z-10" />
                     <input
                         type="text"
                         placeholder="Search shifts..."
@@ -223,8 +223,8 @@ const ShiftList = () => {
                                         <div
                                             key={i}
                                             className={`flex-1 text-center py-1 rounded text-xs font-medium ${shift.workingDays?.includes(i)
-                                                    ? 'bg-primary-100 text-primary-700'
-                                                    : 'bg-secondary-100 text-secondary-400'
+                                                ? 'bg-primary-100 text-primary-700'
+                                                : 'bg-secondary-100 text-secondary-400'
                                                 }`}
                                         >
                                             {day[0]}
@@ -292,8 +292,8 @@ const ShiftList = () => {
                                             type="button"
                                             onClick={() => toggleWorkingDay(i)}
                                             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${formData.workingDays.includes(i)
-                                                    ? 'bg-primary-500 text-white'
-                                                    : 'bg-secondary-100 text-secondary-600 hover:bg-secondary-200'
+                                                ? 'bg-primary-500 text-white'
+                                                : 'bg-secondary-100 text-secondary-600 hover:bg-secondary-200'
                                                 }`}
                                         >
                                             {day}

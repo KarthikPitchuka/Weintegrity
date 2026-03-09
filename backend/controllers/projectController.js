@@ -2,7 +2,55 @@ import Project from '../models/Project.js';
 import User from '../models/User.js';
 import Employee from '../models/Employee.js';
 import ProjectUpdate from '../models/ProjectUpdate.js';
+import Performance from '../models/Performance.js';
 import { createNotification } from './notificationController.js';
+
+const calculateProjectRisk = (project) => {
+    if (project.status === 'completed' || project.progress === 100) return 'on-track';
+    if (!project.endDate) return 'on-track';
+
+    const now = new Date();
+    const start = new Date(project.startDate);
+    const end = new Date(project.endDate);
+
+    // Total duration of the project
+    const totalDuration = end - start;
+    // Time elapsed so far
+    const elapsed = now - start;
+
+    if (totalDuration <= 0) return 'on-track';
+
+    const timeProgress = (elapsed / totalDuration) * 100;
+
+    // If we've used 80% of the time but done less than 50% progress -> At Risk
+    if (timeProgress > 80 && project.progress < 50) return 'delayed';
+    if (timeProgress > 50 && project.progress < 30) return 'at-risk';
+    if (now > end && project.progress < 100) return 'delayed';
+
+    return 'on-track';
+};
+
+// Helper to link project success to Performance Appraisal
+const linkToPerformance = async (employeeId, milestoneTitle, projectName) => {
+    try {
+        // Find active performance review for this employee
+        const activeReview = await Performance.findOne({
+            employeeId,
+            status: { $in: ['draft', 'self-review', 'manager-review'] }
+        }).sort({ createdAt: -1 });
+
+        if (activeReview) {
+            // Add a comment to manager assessment or competencies
+            activeReview.discussionNotes = (activeReview.discussionNotes || '') +
+                `\n[System] Completed Milestone: "${milestoneTitle}" for project "${projectName}" on ${new Date().toLocaleDateString()}.`;
+
+            // Optionally find a matching goal and mark it as in-progress/completed
+            await activeReview.save();
+        }
+    } catch (error) {
+        console.error('Error linking project to performance:', error);
+    }
+};
 
 // @desc    Get all projects
 // @route   GET /api/projects
@@ -375,6 +423,157 @@ export const reviewProjectUpdate = async (req, res) => {
     }
 };
 
+// @desc    Update project progress
+// @route   PATCH /api/projects/:id/progress
+// @access  Private
+export const updateProjectProgress = async (req, res) => {
+    try {
+        const { progress } = req.body;
+        const project = await Project.findById(req.params.id);
+
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        // Authorization: HR or Team Leader
+        const isHR = ['admin', 'HRManager', 'HRExecutive'].includes(req.user.role);
+        const employeeId = req.user.employeeId || req.user._id;
+        const isTL = project.teamLeader.toString() === employeeId.toString();
+
+        if (!isHR && !isTL) {
+            return res.status(403).json({ message: 'Not authorized to update project progress' });
+        }
+
+        project.progress = progress;
+
+        // Auto-complete project if progress is 100%
+        if (progress === 100 && project.status !== 'completed') {
+            project.status = 'completed';
+        }
+
+        project.riskStatus = calculateProjectRisk(project);
+
+        await project.save();
+
+        await project.populate([
+            { path: 'teamLeader', select: 'personalInfo.firstName personalInfo.lastName employeeCode' },
+            { path: 'teamMembers', select: 'personalInfo.firstName personalInfo.lastName employeeCode' },
+            { path: 'assignedBy', select: 'firstName lastName' }
+        ]);
+
+        res.json({ message: 'Progress updated successfully', project });
+    } catch (error) {
+        res.status(500).json({ message: 'Error updating progress', error: error.message });
+    }
+};
+
+// @desc    Toggle milestone status
+// @route   PATCH /api/projects/:id/milestones/:milestoneId/toggle
+// @access  Private
+export const toggleMilestone = async (req, res) => {
+    try {
+        const { id, milestoneId } = req.params;
+        const project = await Project.findById(id);
+
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const isHR = ['admin', 'HRManager', 'HRExecutive'].includes(req.user.role);
+        const employeeId = req.user.employeeId || req.user._id;
+        const isTL = project.teamLeader.toString() === employeeId.toString();
+        const isMember = project.teamMembers.some(m => m.toString() === employeeId.toString());
+
+        const milestone = project.milestones.id(milestoneId);
+        if (!milestone) return res.status(404).json({ message: 'Milestone not found' });
+
+        // Approval Workflow Logic
+        if (isHR || isTL) {
+            // Managers can toggle anything to anything
+            if (milestone.status === 'completed') {
+                milestone.status = 'pending';
+                milestone.completedBy = null;
+            } else {
+                milestone.status = 'completed';
+                milestone.completedBy = employeeId;
+                // Link to performance on completion
+                await linkToPerformance(employeeId, milestone.title, project.name);
+            }
+        } else if (isMember) {
+            // Members can only submit for review
+            if (milestone.status === 'pending') {
+                milestone.status = 'in-review';
+                milestone.completedBy = employeeId;
+            } else if (milestone.status === 'in-review') {
+                milestone.status = 'pending';
+                milestone.completedBy = null;
+            } else {
+                return res.status(403).json({ message: 'Members cannot modify completed milestones' });
+            }
+        } else {
+            return res.status(403).json({ message: 'Not authorized to update milestones' });
+        }
+
+        // Optionally auto-calculate overall progress based on milestones
+        const completedMilestones = project.milestones.filter(m => m.status === 'completed').length;
+        if (project.milestones.length > 0) {
+            project.progress = Math.round((completedMilestones / project.milestones.length) * 100);
+        }
+
+        project.riskStatus = calculateProjectRisk(project);
+
+        await project.save();
+
+        await project.populate([
+            { path: 'teamLeader', select: 'personalInfo.firstName personalInfo.lastName employeeCode' },
+            { path: 'teamMembers', select: 'personalInfo.firstName personalInfo.lastName employeeCode' },
+            { path: 'assignedBy', select: 'firstName lastName' }
+        ]);
+
+        res.json({ message: 'Milestone updated successfully', project });
+    } catch (error) {
+        res.status(500).json({ message: 'Error toggling milestone', error: error.message });
+    }
+};
+
+// @desc    Add project risk
+// @route   POST /api/projects/:id/risks
+// @access  Private
+export const addProjectRisk = async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const employeeId = req.user.employeeId || req.user._id;
+
+        project.risks.push({
+            ...req.body,
+            reportedBy: employeeId
+        });
+
+        await project.save();
+        res.status(201).json({ message: 'Risk reported successfully', project });
+    } catch (error) {
+        res.status(500).json({ message: 'Error adding risk', error: error.message });
+    }
+};
+
+// @desc    Resolve project risk
+// @route   PATCH /api/projects/:id/risks/:riskId/resolve
+// @access  Private (TL/HR)
+export const resolveProjectRisk = async (req, res) => {
+    try {
+        const project = await Project.findById(req.params.id);
+        if (!project) return res.status(404).json({ message: 'Project not found' });
+
+        const risk = project.risks.id(req.params.riskId);
+        if (!risk) return res.status(404).json({ message: 'Risk not found' });
+
+        risk.status = 'resolved';
+        await project.save();
+
+        res.json({ message: 'Risk resolved successfully', project });
+    } catch (error) {
+        res.status(500).json({ message: 'Error resolving risk', error: error.message });
+    }
+};
+
 export default {
     getProjects,
     getProject,
@@ -384,5 +583,9 @@ export default {
     submitProjectUpdate,
     getProjectUpdates,
     reviewProjectUpdate,
-    deleteProject
+    updateProjectProgress,
+    toggleMilestone,
+    deleteProject,
+    addProjectRisk,
+    resolveProjectRisk
 };
