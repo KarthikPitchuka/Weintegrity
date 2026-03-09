@@ -3,9 +3,10 @@ import { HiOutlineMail, HiOutlinePhone, HiOutlineLocationMarker, HiOutlineCalend
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { getImageUrl } from '../utils/imageUrl';
 
 const Profile = () => {
-    const { user, login } = useAuth();
+    const { user, setUser } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
     const [profileLoading, setProfileLoading] = useState(true);
@@ -80,7 +81,7 @@ const Profile = () => {
             });
 
             if (userData.profilePicture) {
-                setProfilePic(`${import.meta.env.VITE_API_URL}${userData.profilePicture}`);
+                setProfilePic(getImageUrl(userData.profilePicture));
             } else {
                 setProfilePic(null);
             }
@@ -136,11 +137,11 @@ const Profile = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 
-            const newPhotoUrl = `${import.meta.env.VITE_API_URL}${response.data.profilePicture}`;
+            const newPhotoUrl = getImageUrl(response.data.profilePicture);
             setProfilePic(newPhotoUrl);
 
             const updatedUser = { ...user, profilePicture: response.data.profilePicture };
-            login(updatedUser, localStorage.getItem('token'));
+            setUser(updatedUser);
 
             toast.success('Profile picture updated');
         } catch (error) {
@@ -159,7 +160,7 @@ const Profile = () => {
             setProfilePic(null);
 
             const updatedUser = { ...user, profilePicture: null };
-            login(updatedUser, localStorage.getItem('token'));
+            setUser(updatedUser);
 
             toast.success('Profile picture removed');
         } catch (error) {

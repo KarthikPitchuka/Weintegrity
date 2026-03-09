@@ -17,17 +17,17 @@ import { auditLog } from '../middleware/audit.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// Route for serving actual file stream via URL - Publicly accessible for <img> tags
+// MUST BE PLACED BEFORE /:id logic, otherwise "files" is interpreted as an ID
+router.get('/files/:filename', serveFileByName);
+
+// All other routes require authentication
 router.use(protect);
 
 // CRUD routes with file upload
 router.route('/')
     .get(getDocuments)
     .post(upload.single('file'), auditLog('DOCUMENT_UPLOAD'), uploadDocument);
-
-// Route for serving actual file stream via URL
-// MUST BE PLACED BEFORE /:id logic, otherwise "files" is interpreted as an ID
-router.get('/files/:filename', serveFileByName);
 
 router.route('/:id')
     .get(getDocument)

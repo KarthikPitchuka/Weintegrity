@@ -4,6 +4,9 @@ import Shift from '../models/Shift.js';
 import { generateToken } from '../middleware/auth.js';
 import { sendEmail, emailTemplates, generateOTP } from '../services/emailService.js';
 import { logLogin, logLogout, logPasswordChange, logCreate } from '../utils/auditLogger.js';
+import mongoose from 'mongoose';
+import path from 'path';
+import stream from 'stream';
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -811,19 +814,53 @@ export const uploadProfilePicture = async (req, res) => {
         }
 
         const user = await User.findById(req.user._id);
-
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        const fileUrl = `/uploads/${req.file.filename}`;
-        user.profilePicture = fileUrl;
-        await user.save();
-
-        res.json({
-            message: 'Profile picture uploaded successfully',
-            profilePicture: fileUrl
+        // Use GridFS for storage (consistent with documents)
+        const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+            bucketName: 'uploads'
         });
+
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = `profile-${user._id}-${uniqueSuffix}${path.extname(req.file.originalname)}`;
+
+        const uploadStream = bucket.openUploadStream(filename, {
+            contentType: req.file.mimetype,
+            metadata: {
+                originalname: req.file.originalname,
+                type: 'profile-picture',
+                userId: user._id
+            }
+        });
+
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(req.file.buffer);
+        bufferStream.pipe(uploadStream);
+
+        uploadStream.on('error', (error) => {
+            console.error('GridFS Upload Error:', error);
+            return res.status(500).json({ message: 'Error uploading to storage', error: error.message });
+        });
+
+        uploadStream.on('finish', async () => {
+            try {
+                // Use the dedicated files endpoint for serving
+                const fileUrl = `/api/documents/files/${filename}`;
+                user.profilePicture = fileUrl;
+                await user.save();
+
+                res.json({
+                    message: 'Profile picture uploaded successfully',
+                    profilePicture: fileUrl
+                });
+            } catch (err) {
+                console.error('Error saving user profile picture:', err);
+                return res.status(500).json({ message: 'Error saving profile photo', error: err.message });
+            }
+        });
+
     } catch (error) {
         console.error('Error uploading profile picture:', error);
         res.status(500).json({ message: 'Error uploading profile picture', error: error.message });
